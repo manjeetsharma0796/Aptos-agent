@@ -12,6 +12,9 @@ if not os.environ.get("GOOGLE_API_KEY"):
 
 from langchain.chat_models import init_chat_model
 
+
+
+
 # model = init_chat_model("gemini-2.0-flash", model_provider="google_genai")
 # res = model.invoke("Hello, world!")
 # print(res.content)
@@ -64,6 +67,97 @@ def web_search(query: str) -> str:
         return "No relevant web result found."
     except Exception as e:
         return f"Web search failed: {e}"
+
+
+# Tool: Get account modules (Aptos)
+@tool
+def get_aptos_account_modules(address: str, ledger_version: int = None) -> str:
+    """
+    Retrieves all account modules' bytecode for a given Aptos account. Optionally specify a ledger version.
+    """
+    import requests
+    url = f"https://api.testnet.aptoslabs.com/v1/accounts/{address}/modules"
+    params = {}
+    if ledger_version is not None:
+        params["ledger_version"] = ledger_version
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if not data:
+                return "No modules found for this account."
+            modules = []
+            for mod in data:
+                name = mod.get("abi", {}).get("name", "?")
+                bytecode = mod.get("bytecode", "?")
+                modules.append(f"- Module: {name}\n  Bytecode: {bytecode[:20]}... (truncated)")
+            return "\n\n".join(modules)
+        elif response.status_code == 410:
+            return "Requested ledger version has been pruned."
+        else:
+            return f"Failed to fetch modules. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error fetching modules: {e}"
+
+
+# Tool: Get account transaction summaries (Aptos)
+@tool
+def get_aptos_account_transaction_summaries(address: str, start_version: int = None) -> str:
+    """
+    Get summaries of on-chain committed transactions for an Aptos account. Each summary includes sender, hash, version, and replay protector. Optionally, start from a specific version.
+    """
+    import requests
+    url = f"https://api.testnet.aptoslabs.com/v1/accounts/{address}/transaction_summaries"
+    params = {}
+    if start_version is not None:
+        params["start_version"] = start_version
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if not data:
+                return "No transaction summaries found for this account."
+            summaries = []
+            for tx in data:
+                sender = tx.get("sender", "?")
+                txn_hash = tx.get("hash", "?")
+                version = tx.get("version", "?")
+                replay_protector = tx.get("replay_protector", "?")
+                summaries.append(f"- Sender: {sender}\n  Hash: {txn_hash}\n  Version: {version}\n  Replay protector: {replay_protector}")
+            return "\n\n".join(summaries)
+        else:
+            return f"Failed to fetch transaction summaries. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error fetching transaction summaries: {e}"
+
+
+# Tool: Estimate gas price (Aptos)
+@tool
+def estimate_aptos_gas_price() -> str:
+    """
+    Get an estimate of the gas unit price required for a transaction on Aptos testnet, explained in easy words.
+    """
+    import requests
+    url = "https://api.testnet.aptoslabs.com/v1/estimate_gas_price"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            min_gas = data.get("deprioritized_gas_estimate", "?")
+            normal_gas = data.get("gas_estimate", "?")
+            high_gas = data.get("prioritized_gas_estimate", "?")
+            summary = (
+                f"Estimated gas price (per unit):\n"
+                f"- Minimum (slow): {min_gas}\n"
+                f"- Normal (average): {normal_gas}\n"
+                f"- High (fast): {high_gas}\n"
+                "This is the amount you pay for each unit of gas when sending a transaction. Higher price = faster confirmation."
+            )
+            return summary
+        else:
+            return f"Failed to fetch gas price estimate. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error fetching gas price estimate: {e}"
 
 
 # # EVM chain RPC endpoints (add more as needed)
@@ -222,7 +316,39 @@ def get_aptos_balance(address: str) -> str:
     except Exception as e:
         return f"Error fetching balance: {e}"
 
-tools = [add, sub, mul, web_search, get_aptos_balance]
+# Tool: Get transaction by hash (Aptos)
+@tool
+def get_aptos_transaction_by_hash(txn_hash: str) -> str:
+    """
+    Look up an Aptos transaction by its hash and return a simple summary in easy words.
+    """
+    import requests
+    url = f"https://api.testnet.aptoslabs.com/v1/transactions/by_hash/{txn_hash}"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            # Make a simple summary
+            sender = data.get("sender", "Unknown")
+            success = data.get("success", False)
+            gas = data.get("gas_used", "?")
+            version = data.get("version", "?")
+            timestamp = data.get("timestamp", "?")
+            summary = f"Transaction {txn_hash}:\n"
+            summary += f"- Sent by: {sender}\n"
+            summary += f"- Success: {'Yes' if success else 'No'}\n"
+            summary += f"- Gas used: {gas}\n"
+            summary += f"- Version: {version}\n"
+            summary += f"- Timestamp: {timestamp}\n"
+            return summary
+        elif response.status_code == 404:
+            return f"No transaction found for hash {txn_hash}."
+        else:
+            return f"Failed to fetch transaction. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error fetching transaction: {e}"
+
+tools = [add, sub, mul, web_search, get_aptos_balance, get_aptos_transaction_by_hash, estimate_aptos_gas_price, get_aptos_account_transaction_summaries, get_aptos_account_modules]
 
 #From Youtube video https://youtu.be/zCwuAlpQKTM
 from langchain.chat_models import init_chat_model
