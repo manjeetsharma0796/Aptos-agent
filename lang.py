@@ -1,3 +1,4 @@
+
 import json
 import getpass
 import os
@@ -67,6 +68,33 @@ def web_search(query: str) -> str:
         return "No relevant web result found."
     except Exception as e:
         return f"Web search failed: {e}"
+
+# Tool: Get account module names (Aptos)
+@tool
+def get_aptos_account_module_names(address: str, ledger_version: int = None) -> str:
+    """
+    Retrieves all module names for a given Aptos account. Optionally specify a ledger version.
+    """
+    import requests
+    url = f"https://api.testnet.aptoslabs.com/v1/accounts/{address}/modules"
+    params = {}
+    if ledger_version is not None:
+        params["ledger_version"] = ledger_version
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if not data:
+                return "No modules found for this account."
+            names = [mod.get("abi", {}).get("name", "?") for mod in data]
+            return "Module names: " + ", ".join(names)
+        elif response.status_code == 410:
+            return "Requested ledger version has been pruned."
+        else:
+            return f"Failed to fetch modules. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error fetching modules: {e}"
+
 
 
 # Tool: Get account modules (Aptos)
@@ -348,7 +376,7 @@ def get_aptos_transaction_by_hash(txn_hash: str) -> str:
     except Exception as e:
         return f"Error fetching transaction: {e}"
 
-tools = [add, sub, mul, web_search, get_aptos_balance, get_aptos_transaction_by_hash, estimate_aptos_gas_price, get_aptos_account_transaction_summaries, get_aptos_account_modules]
+tools = [add, sub, mul, web_search, get_aptos_balance, get_aptos_transaction_by_hash, estimate_aptos_gas_price, get_aptos_account_transaction_summaries, get_aptos_account_modules, get_aptos_account_module_names]
 
 #From Youtube video https://youtu.be/zCwuAlpQKTM
 from langchain.chat_models import init_chat_model
